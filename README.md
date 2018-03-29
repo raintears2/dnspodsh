@@ -2,7 +2,7 @@
 
 基于dnspod api构架的一键修改dnspod记录工具，满足需要批量切换dns指向的需求
 
-可以配置多个csv文件，例如gaofang.csv、idc.csv等。csv文件可以在dnspod后台导出并修改
+可以配置多个逗号分隔的csv文件，例如gaofang.csv、idc.csv等。（csv文件可以在dnspod后台导出样例并修改）
 
 这个脚本是我在dnspod的页面上找到的
 
