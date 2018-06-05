@@ -12,7 +12,7 @@
 
 # 填自己的配置
 target_file='name.csv'
-# 填自己的token
+# token 请从dnspod后台获取
 login_token='123456,sdfasdfgasgdadfasdfasdfasdfasdf'
 format="json"
 lang="en"
@@ -23,17 +23,19 @@ apiUrl='https://dnsapi.cn/'
 logDir='.'
 logFile=$logDir'/dnspodapi.log'
 
-# 检测ip地址是否符合要求
-checkip()
+# 检测ip或域名地址是否符合要求
+checkrecord()
 {
         # ipv4地址
         if [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]];then
                 return 0
-        # ipv6地址
-#       elif [[ "$1" =~ ^([\da-fA-F]{1,4}:){7}[\da-fA-F]{1,4}$|^:((:[\da-fA-F]{1,4}){1,6}|:)$|^[\da-fA-F]{1,4}:((:[\da-fA-F]{1,4}){1,5}|:)$|^([\da-fA-F]{1,4}:){2}((:[\da-fA-F]{1,4}){1,4}|:)$|^([\da-fA-F]{1,4}:){3}((:[\da-fA-F]{1,4}){1,3}|:)$|^([\da-fA-F]{1,4}:){4}((:[\da-fA-F]{1,4}){1,2}|:)$|^([\da-fA-F]{1,4}:){5}:([\da-fA-F]{1,4})?$|^([\da-fA-F]{1,4}:){6}:$ ]];then
-#               return 0
+        # CNAME地址
+        elif [[ "$1" =~ ^([0-9a-z]{1,30}\.){1,10}$ ]];then
+                return 0
         fi
         return 1
+
+
 }
 writeLog()
 {
@@ -79,7 +81,8 @@ getDataByKey()
 getRegexp()
 {
         case $1 in
-                'value') echo '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}';;
+#               'value') echo '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}';;
+                'value') echo '[-_.A-Za-z0-9*]\+';;
                 'type') echo '[A-Z]\+';;
                 'name') echo '[-_.A-Za-z0-9*]\+';;
                 'ttl'|'id') echo '[0-9]\+';;
@@ -99,7 +102,7 @@ getJSONObjByKey()
 # 对于其它记录，同样的名称可以对应多条记录，因此使用getJSONObjByKey可能获取不到需要的数据
 getJSONObjByARecord()
 {
-        grep -o '{[^}{]*"name":"'$1'"[^}]*"type":"A"[^}]*}'
+        grep -o '{[^}{]*"name":"'$1'"[^}]*"type":"'$2'"[^}]*}'
 }
 
 # 根据域名id获取记录列表
@@ -115,7 +118,7 @@ getDomainList()
 # 设置记录
 setRecord()
 {
-        writeLog "set domain $3.$8 to new ip:$7"
+        writeLog "set domain $3.$8 to new record:$7"
         local subDomain=$3
         # 由于*会被扩展，在最后一步将转义的\*替换成*
         if [ "$subDomain" = '\*' ];then
@@ -128,7 +131,7 @@ setRecord()
         if checkStatusCode "$saveResult" 0;then
             writeLog "set record $3.$8 success."
         fi
-        #getUrl 'Record.Modify' "&domain_id=$domainid&record_id=$recordid&sub_domain=$recordName&record_type=$recordtype&record_line=$recordline&ttl=$recordttl&value=$newip"
+        #getUrl 'Record.Modify' "&domain_id=$domainid&record_id=$recordid&sub_domain=$recordName&record_type=$recordtype&record_line=$recordline&ttl=$recordttl&value=$newrecord"
         unset changeRecords
 }
 
@@ -145,6 +148,8 @@ do
     domainInfo=$(echo $domainListInfo|getJSONObjByKey 'name' $domainName) 
     domainid=$(getDataByKey "$domainInfo" 'id')
     recordList=$(getRecordList $domainid)    
+#    echo "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+#    echo $recordList | jq .records[].name
 
     if [ -z "$recordList" ];then
         writeLog 'DNSPOD tell me record list null,waiting...'
@@ -159,36 +164,42 @@ do
             subdomain='\*'
         fi
         # 从dnspod获取要设置的子域名记录的信息
-        recordInfo=$(echo $recordList|getJSONObjByARecord $subdomain)
-
+        domaintpye=$(echo $sub_all | awk -F',' '{print $1}')
+        echo $domaintpye
+        if [ "$domaintpye" == "CNAME" ] ;then
+            recordInfo=$(echo $recordList|getJSONObjByARecord $subdomain CNAME)
+        elif [ "$domaintpye" == "A" ] ;then
+            recordInfo=$(echo $recordList|getJSONObjByARecord $subdomain A)
+        fi
         # 从dnspod获取要设置的子域名的ip
-        oldip=$(getDataByKey "$recordInfo" 'value')
-        # 检测获取到的旧ip地址是否符合ip规则
-        if ! checkip "$oldip";then
-            writeLog 'get old ip error!it is "$oldid".waiting...'
+        oldrecord=$(getDataByKey "$recordInfo" 'value')
+#        # 检测获取到的旧ip或域名地址是否符合规则
+        if ! checkrecord "$oldrecord";then
+            writeLog "get old record error!it is "$oldrecord".waiting..."
             continue
         fi
 
-        newip=$(echo $sub_all | awk -F',' '{print $4}')
+        newrecord=$(echo $sub_all | awk -F',' '{print $4}')
 
-        if [ "$newip" != "$oldip" ];then
+        if [ "$newrecord" != "$oldrecord" ];then
             recordid=$(getDataByKey "$recordInfo" 'id')
             recordName=$subdomain
             recordTtl=$(echo $sub_all | awk -F',' '{print $6}')
             recordType=$(echo $sub_all | awk -F',' '{print $1}')
-
+            #echo "$recordid $recordName $recordTtl $recordType"
             # 由于从服务器获取的线路是utf编码，目前无法知道如何转换成中文，因此在这里写死。dnspod中免费用户的默认线路的名称就是“默认”
             #recordLine=$(getDataByKey "$recordInfo" 'line')
             recordLine='默认'
+    
     
             # 判断取值是否正常，如果值为空就不处理
             if [ -n "$recordid" ] && [ -n "$recordTtl" ] && [ -n "$recordType" ]; then
                 # 使用数组记录需要修改的子域名的所有值
                 # 这里一共有8个参数，与setRecord中的参数对应
-                changedRecords=($domainid $recordid $recordName $recordType $recordLine $recordTtl $newip $domainName)
+                changedRecords=($domainid $recordid $recordName $recordType $recordLine $recordTtl $newrecord $domainName)
                 if (( ${#changedRecords[@]} == 8 ));then
                     #echo ${changedRecords[@]}
-                    writeLog "$recordName.$domainName  ip is changed,new ip is:$newip"
+                    writeLog "$recordName.$domainName record is changed,new record is:$newrecord"
                     setRecord ${changedRecords[@]}
                 fi
             fi
