@@ -9,3 +9,4 @@ A,www,默认,122.122.122.122,-,1600,abc.com
 #A,www2,默认,122.122.122.122,-,1600,abc.com
 A,www,默认,11.11.11.11,-,600,def.com
 A,www2,默认,12.12.12.12,-,600,def.com
+CNAME,sendmail,默认,abc.abc.gmail.mtmm.com.,-,600,mtmm.com
