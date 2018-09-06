@@ -16,7 +16,7 @@ target_file='name.csv'
 login_token='123456,sdfasdfgasgdadfasdfasdfasdfasdf'
 format="json"
 lang="en"
-userAgent="dnspodsh/0.5(sookey@gmail.com)"
+userAgent="dnspodsh/0.5"
 commonPost="login_token=$login_token&format=$format&lang=$lang"
 apiUrl='https://dnsapi.cn/'
 # logfile  填自己的路径
